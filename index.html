@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>First Man Furniture</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--ink:#16231f;--bg:#f8f7f2;--brass:#b08437;--wood:#4a3524;--line:#dedbd0;--card:#fff}
+*{box-sizing:border-box}body{margin:0;font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+h1,h2,h3{font-family:Georgia,serif;font-weight:700;margin:0}
+header{background:var(--ink);color:#f3efe3;padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:5}
+header h1{font-size:1.15rem;flex:1;min-width:150px}
+button{font:inherit;cursor:pointer;border:0;border-radius:6px;padding:9px 14px;background:var(--brass);color:#fff;font-weight:600}
+button.ghost{background:transparent;border:1px solid currentColor;color:inherit}
+button:focus-visible,input:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
+.hero{padding:34px 16px 20px;max-width:900px;margin:auto}.hero h2{font-size:clamp(1.8rem,6vw,3rem);line-height:1.1}
+.hero p{max-width:55ch;color:#4b564f}
+.tabs{display:flex;gap:8px;overflow-x:auto;padding:8px 16px;max-width:1100px;margin:auto}
+.tabs button{background:var(--card);color:var(--ink);border:1px solid var(--line);white-space:nowrap}
+.tabs button.on{background:var(--ink);color:#fff}
+main{max-width:1100px;margin:auto;padding:8px 16px 60px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+.pic{height:130px;display:grid;place-items:center;font-size:3.4rem;background:var(--wood)}
+.card div.b{padding:12px;display:flex;flex-direction:column;gap:6px;flex:1}.card h3{font-size:1rem}
+.cat{font-size:.8rem;color:#6a746d}.price{font-weight:700;margin-top:auto}
+#drawer{position:fixed;inset:0 0 0 auto;width:min(420px,100%);background:#fff;box-shadow:-6px 0 24px #0003;transform:translateX(100%);transition:transform .25s;z-index:10;display:flex;flex-direction:column}
+#drawer.open{transform:none}#drawer .in{padding:16px;overflow:auto;flex:1}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.row small{color:#6a746d}.q button{padding:2px 9px;background:var(--line);color:var(--ink)}
+input{width:100%;padding:10px;margin:5px 0;border:1px solid var(--line);border-radius:6px;font:inherit}
+.order{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin:10px 0}
+#msg{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:8px;display:none;z-index:20;max-width:92%}
+@media(prefers-reduced-motion:reduce){#drawer{transition:none}}
+</style></head><body>
+<header>
+ <h1>First Man Furniture</h1>
+ <button class="ghost" id="shopBtn">Shop</button>
+ <button class="ghost" id="ordBtn">My orders</button>
+ <button class="ghost" id="authBtn">Sign in with Google</button>
+ <button id="cartBtn">Cart (0)</button>
+</header>
+<div id="shop">
+ <section class="hero"><h2>Seating and storage for offices, events and homes.</h2>
+ <p>Executive chairs and tables, banquet chairs, gaming chairs and cabinets from First Man Furniture.</p></section>
+ <nav class="tabs" id="tabs"></nav>
+ <main><div class="grid" id="grid"></div></main>
+</div>
+<main id="orders" hidden></main>
+<aside id="drawer" aria-label="Cart"><div class="in">
+ <div class="row"><h2>Your cart</h2><button class="ghost" style="color:var(--ink)" id="closeCart">Close</button></div>
+ <div id="cartItems"></div>
+ <h3 style="margin-top:16px">Delivery details</h3>
+ <input id="fName" placeholder="Full name" autocomplete="name">
+ <input id="fPhone" placeholder="Phone number" autocomplete="tel" inputmode="tel">
+ <input id="fAddr" placeholder="Delivery address" autocomplete="street-address">
+ <button id="pay" style="width:100%;margin-top:8px">Place order</button>
+</div></aside>
+<div id="msg" role="status"></div>
+<script>
+// Edit names, categories and prices (₦) here
+const PRODUCTS=[
+{id:1,n:"Executive Leather Chair",c:"Executive Chairs",p:185000,e:"🪑"},
+{id:2,n:"Mesh Office Chair",c:"Executive Chairs",p:95000,e:"💺"},
+{id:3,n:"Executive Desk, 1.6m",c:"Executive Tables",p:320000,e:"🗄️"},
+{id:4,n:"Conference Table, 8-seater",c:"Executive Tables",p:450000,e:"🪵"},
+{id:5,n:"Banquet Chair, Gold Frame",c:"Banquet Chairs",p:28000,e:"🪑"},
+{id:6,n:"Banquet Chair, Padded",c:"Banquet Chairs",p:22000,e:"💺"},
+{id:7,n:"Pro Gaming Chair",c:"Gaming Chairs",p:140000,e:"🎮"},
+{id:8,n:"Racing Gaming Chair",c:"Gaming Chairs",p:115000,e:"🏁"},
+{id:9,n:"Filing Cabinet, 4-drawer",c:"Cabinets",p:85000,e:"🗄️"},
+{id:10,n:"Wooden Display Cabinet",c:"Cabinets",p:210000,e:"🚪"}];
+const $=id=>document.getElementById(id);
+const naira=n=>"₦"+Number(n).toLocaleString("en-NG");
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let sb,user=null,cart=JSON.parse(sessionStorage.getItem("cart")||"{}"),cat="All";
+function toast(t){const m=$("msg");m.textContent=t;m.style.display="block";setTimeout(()=>m.style.display="none",4000)}
+function drawShop(){
+ const cats=["All",...new Set(PRODUCTS.map(p=>p.c))];
+ $("tabs").innerHTML=cats.map(c=>`<button class="${c===cat?"on":""}" data-c="${c}">${c}</button>`).join("");
+ $("grid").innerHTML=PRODUCTS.filter(p=>cat==="All"||p.c===cat).map(p=>`<article class="card"><div class="pic" aria-hidden="true">${p.e}</div><div class="b"><span class="cat">${p.c}</span><h3>${p.n}</h3><span class="price">${naira(p.p)}</span><button data-add="${p.id}">Add to cart</button></div></article>`).join("");
+}
+function drawCart(){
+ sessionStorage.setItem("cart",JSON.stringify(cart));
+ const ids=Object.keys(cart),count=ids.reduce((s,i)=>s+cart[i],0);
+ $("cartBtn").textContent=`Cart (${count})`;
+ let total=0;
+ $("cartItems").innerHTML=ids.length?ids.map(i=>{const p=PRODUCTS.find(x=>x.id==i);total+=p.p*cart[i];
+  return `<div class="row"><div>${p.n}<br><small>${naira(p.p)}</small></div><div class="q"><button data-d="${i}">−</button> ${cart[i]} <button data-add="${i}">+</button></div></div>`}).join("")+`<div class="row"><strong>Total</strong><strong>${naira(total)}</strong></div>`:"<p>Your cart is empty. Add a product to start.</p>";
+}
+function drawAuth(){$("authBtn").textContent=user?"Sign out":"Sign in with Google";$("ordBtn").hidden=!user}
+async function showOrders(){
+ $("shop").hidden=true;$("orders").hidden=false;
+ if(!user){$("orders").innerHTML="<h2>My orders</h2><p>Sign in with Google to see your orders.</p>";return}
+ $("orders").innerHTML="<h2>My orders</h2><p>Loading…</p>";
+ const {data,error}=await sb.from("orders").select("*").order("created_at",{ascending:false});
+ if(error){$("orders").innerHTML="<h2>My orders</h2><p>Could not load orders. Try again.</p>";return}
+ $("orders").innerHTML="<h2>My orders</h2>"+(data.length?data.map(o=>`<div class="order"><strong>${new Date(o.created_at).toLocaleString("en-NG")}</strong><br>${o.items.map(i=>`${esc(i.name)} × ${i.qty}`).join("<br>")}<br><strong>${naira(o.total)}</strong></div>`).join(""):"<p>No orders yet. Place your first order from the shop.</p>");
+}
+function showShop(){$("shop").hidden=false;$("orders").hidden=true}
+document.addEventListener("click",async e=>{
+ const t=e.target;
+ if(t.dataset.c){cat=t.dataset.c;drawShop()}
+ if(t.dataset.add){cart[t.dataset.add]=(cart[t.dataset.add]||0)+1;drawCart();if(!$("drawer").classList.contains("open"))toast("Added to cart")}
+ if(t.dataset.d){if(--cart[t.dataset.d]<=0)delete cart[t.dataset.d];drawCart()}
+});
+$("cartBtn").onclick=()=>$("drawer").classList.add("open");
+$("closeCart").onclick=()=>$("drawer").classList.remove("open");
+$("shopBtn").onclick=showShop;$("ordBtn").onclick=showOrders;
+$("authBtn").onclick=async()=>{
+ if(user){await sb.auth.signOut();return}
+ await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin}});
+};
+$("pay").onclick=async()=>{
+ if(!user)return toast("Sign in with Google before placing an order.");
+ const items=Object.keys(cart).map(i=>{const p=PRODUCTS.find(x=>x.id==i);return{id:p.id,name:p.n,price:p.p,qty:cart[i]}});
+ const name=$("fName").value.trim(),phone=$("fPhone").value.trim(),address=$("fAddr").value.trim();
+ if(!items.length)return toast("Your cart is empty.");
+ if(!name||!phone||!address)return toast("Fill in your name, phone and address.");
+ $("pay").disabled=true;$("pay").textContent="Placing order…";
+ try{
+  const {data:{session}}=await sb.auth.getSession();
+  const r=await fetch("/api/checkout",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+session.access_token},body:JSON.stringify({items,name,phone,address})});
+  const j=await r.json();
+  if(!r.ok)throw new Error(j.error||"Order failed");
+  cart={};drawCart();$("drawer").classList.remove("open");
+  toast(j.emailSent?"Order placed. Check your email for confirmation.":"Order placed. Confirmation email could not be sent.");
+  showOrders();
+ }catch(err){toast(err.message)}
+ $("pay").disabled=false;$("pay").textContent="Place order";
+};
+(async()=>{
+ drawShop();drawCart();
+ const cfg=await (await fetch("/api/config")).json();
+ sb=supabase.createClient(cfg.url,cfg.anon);
+ const {data:{session}}=await sb.auth.getSession();
+ user=session?.user||null;drawAuth();
+ sb.auth.onAuthStateChange((_e,s)=>{user=s?.user||null;drawAuth();if(!user)showShop()});
+})();
+</script></body></html>
